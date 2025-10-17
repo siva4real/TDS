@@ -885,7 +885,8 @@ def enable_github_pages(repo_name: str):
             "source": {
                 "branch": "main",
                 "path": "/"
-            }
+            },
+            "build_type": "legacy"  # Explicitly set build type to ensure Pages is active
         }
         
         response = httpx.post(url, headers=headers, json=data, timeout=30.0)
@@ -902,19 +903,28 @@ def enable_github_pages(repo_name: str):
         elif response.status_code == 201:
             logger.info("  ✓ GitHub Pages enabled successfully")
         elif response.status_code == 409:
-            logger.info("  ✓ GitHub Pages already enabled")
+            logger.info("  ✓ GitHub Pages already exists, updating configuration...")
+            # If Pages already exists, we need to update it with PUT instead
+            put_response = httpx.put(url, headers=headers, json=data, timeout=30.0)
+            logger.info(f"  📊 Update response status: {put_response.status_code}")
+            if put_response.status_code == 200:
+                logger.info("  ✓ GitHub Pages configuration updated")
+            else:
+                logger.warning(f"  ⚠ Could not update Pages config: {put_response.text}")
         
         # Wait longer for Pages to initialize (can take 1-2 minutes)
-        logger.info("  ⏳ Waiting 10 seconds for Pages to initialize...")
-        time.sleep(10)
+        logger.info("  ⏳ Waiting 15 seconds for Pages to fully initialize...")
+        time.sleep(15)
         
-        # Verify Pages is enabled
+        # Verify Pages is enabled and get the actual status
         verify_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
         verify_response = httpx.get(verify_url, headers=headers, timeout=30.0)
         if verify_response.status_code == 200:
             pages_info = verify_response.json()
             logger.info(f"  ✓ Pages verification successful - Status: {pages_info.get('status', 'unknown')}")
             logger.info(f"  🌐 Pages URL: {pages_info.get('html_url', 'N/A')}")
+            logger.info(f"  🔧 Build type: {pages_info.get('build_type', 'N/A')}")
+            logger.info(f"  📂 Source: {pages_info.get('source', {}).get('branch', 'N/A')}/{pages_info.get('source', {}).get('path', 'N/A')}")
         else:
             logger.warning(f"  ⚠ Could not verify Pages status: {verify_response.status_code}")
     

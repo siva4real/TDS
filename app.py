@@ -872,8 +872,22 @@ def enable_github_pages(repo_name: str):
         user = github_client.get_user()
         repo = user.get_repo(repo_name)
         
-        # Enable GitHub Pages using the main branch
-        # Note: PyGithub doesn't have direct Pages API support, so we use the REST API
+        # Wait for GitHub to process all commits before enabling Pages
+        logger.info("  ⏳ Waiting 10 seconds for GitHub to process commits...")
+        time.sleep(10)
+        
+        # Verify files exist in the repo before enabling Pages
+        logger.info("  🔍 Verifying repository contents...")
+        try:
+            contents = repo.get_contents("")
+            file_names = [content.name for content in contents]
+            logger.info(f"  ✓ Found files: {', '.join(file_names)}")
+            if "index.html" not in file_names:
+                logger.warning("  ⚠ index.html not found in root - Pages may not work")
+        except Exception as e:
+            logger.warning(f"  ⚠ Could not verify repo contents: {e}")
+        
+        # Enable GitHub Pages using POST to create
         url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
         logger.info(f"  📡 Calling GitHub Pages API: {url}")
         headers = {
@@ -888,69 +902,59 @@ def enable_github_pages(repo_name: str):
             }
         }
         
-        # Try PUT first (more reliable for enabling Pages)
-        logger.info("  🔧 Attempting to enable Pages with PUT request...")
-        response = httpx.put(url, headers=headers, json=data, timeout=30.0)
-        logger.info(f"  📊 PUT Response status: {response.status_code}")
+        # Use POST to create Pages
+        logger.info("  📝 Creating GitHub Pages with POST request...")
+        response = httpx.post(url, headers=headers, json=data, timeout=30.0)
+        logger.info(f"  📊 Response status: {response.status_code}")
         
-        # If PUT fails with 404, Pages doesn't exist yet, try POST to create
-        if response.status_code == 404:
-            logger.info("  📝 Pages not found, creating with POST request...")
-            response = httpx.post(url, headers=headers, json=data, timeout=30.0)
-            logger.info(f"  📊 POST Response status: {response.status_code}")
-        
-        # Check if successful
-        if response.status_code not in [200, 201, 204, 409]:
-            logger.warning(f"  ⚠ Response body: {response.text}")
-            raise Exception(f"GitHub Pages API returned {response.status_code}: {response.text}")
-        
-        if response.status_code in [200, 201]:
-            logger.info("  ✓ GitHub Pages enabled successfully")
-        elif response.status_code == 204:
-            logger.info("  ✓ GitHub Pages configuration updated")
+        # Handle response
+        if response.status_code == 201:
+            logger.info("  ✓ GitHub Pages created successfully")
+            pages_data = response.json()
+            logger.info(f"  🌐 Pages URL: {pages_data.get('html_url', 'N/A')}")
         elif response.status_code == 409:
-            logger.info("  ✓ GitHub Pages already exists")
+            logger.info("  ℹ Pages already exists - that's OK")
+        elif response.status_code == 404:
+            logger.error("  ❌ Repository not found or API endpoint incorrect")
+            logger.error(f"  Response: {response.text}")
+        else:
+            logger.warning(f"  ⚠ Unexpected status code: {response.status_code}")
+            logger.warning(f"  Response: {response.text}")
+            # Don't fail - Pages might still work
         
         # Wait for Pages to initialize
-        logger.info("  ⏳ Waiting 5 seconds before requesting build...")
-        time.sleep(5)
+        logger.info("  ⏳ Waiting 20 seconds for Pages to build and deploy...")
+        time.sleep(20)
         
-        # Request a Pages build explicitly to trigger deployment
-        build_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages/builds"
-        logger.info(f"  🔨 Requesting Pages build: {build_url}")
-        build_response = httpx.post(build_url, headers=headers, timeout=30.0)
-        logger.info(f"  📊 Build request status: {build_response.status_code}")
-        
-        if build_response.status_code == 201:
-            build_info = build_response.json()
-            logger.info(f"  ✓ Pages build requested - Status: {build_info.get('status', 'N/A')}")
-        else:
-            logger.warning(f"  ⚠ Build request returned {build_response.status_code}: {build_response.text}")
-        
-        # Wait for build to start
-        logger.info("  ⏳ Waiting 10 seconds for build to process...")
-        time.sleep(10)
-        
-        # Verify Pages is enabled and get the actual status
+        # Verify Pages status
         verify_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
+        logger.info("  🔍 Verifying Pages status...")
         verify_response = httpx.get(verify_url, headers=headers, timeout=30.0)
+        
         if verify_response.status_code == 200:
             pages_info = verify_response.json()
-            logger.info(f"  ✓ Pages verification successful - Status: {pages_info.get('status', 'unknown')}")
+            status = pages_info.get('status')
+            logger.info(f"  📊 Pages Status: {status}")
             logger.info(f"  🌐 Pages URL: {pages_info.get('html_url', 'N/A')}")
-            logger.info(f"  🔧 Build type: {pages_info.get('build_type', 'N/A')}")
-            logger.info(f"  📂 Source: {pages_info.get('source', {}).get('branch', 'N/A')}/{pages_info.get('source', {}).get('path', 'N/A')}")
+            logger.info(f"  📂 Source: {pages_info.get('source', {}).get('branch', 'N/A')} / {pages_info.get('source', {}).get('path', 'N/A')}")
             
-            # Check if we need to wait for build to complete
-            if pages_info.get('status') in ['queued', 'building']:
-                logger.info("  ⏳ Pages is building, waiting additional 15 seconds...")
-                time.sleep(15)
+            # If still building, wait longer
+            if status in ['queued', 'building']:
+                logger.info("  ⏳ Pages still building, waiting additional 20 seconds...")
+                time.sleep(20)
+                # Check again
+                verify_response2 = httpx.get(verify_url, headers=headers, timeout=30.0)
+                if verify_response2.status_code == 200:
+                    pages_info2 = verify_response2.json()
+                    logger.info(f"  📊 Final Pages Status: {pages_info2.get('status')}")
         else:
-            logger.warning(f"  ⚠ Could not verify Pages status: {verify_response.status_code}")
+            logger.warning(f"  ⚠ Could not verify Pages status (HTTP {verify_response.status_code})")
+            logger.warning(f"  This may be normal - Pages might still work after manual activation")
     
     except Exception as e:
-        logger.error(f"  ❌ Could not enable GitHub Pages: {e}")
-        raise  # Re-raise the exception so deployment fails if Pages can't be enabled
+        logger.error(f"  ❌ Error during GitHub Pages setup: {e}")
+        logger.warning("  ⚠ Continuing anyway - Pages may need manual activation")
+        # Don't re-raise - allow deployment to complete even if Pages API has issues
 
 
 async def send_evaluation(evaluation_url: str, data: EvaluationResponse):

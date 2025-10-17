@@ -138,9 +138,9 @@ This guide will walk you through deploying your GitHub Pages Deployment API to R
    curl -X POST https://YOUR-APP-NAME.onrender.com/deploy \
      -H "Content-Type: application/json" \
      -d '{
-       "email": "test@example.com",
-       "secret": "myappsecret123123",
-       "task": "test-deployment",
+       "email": "user@example.com",
+       "secret": "your_secret_code_here",
+       "task": "create-landing-page",
        "round": 1,
        "nonce": "test123",
        "brief": "Test deployment to verify API is working",

@@ -212,11 +212,6 @@ async def handle_round_1(request: TaskRequest) -> dict:
     )
     logger.info(f"✓ Repository created: {repo_info['repo_url']}")
     
-    # Enable GitHub Pages
-    logger.info("🌐 Enabling GitHub Pages...")
-    enable_github_pages(repo_name)
-    logger.info(f"✓ GitHub Pages enabled: {repo_info['pages_url']}")
-    
     # Prepare evaluation response
     logger.info("📋 Preparing evaluation response...")
     eval_response = EvaluationResponse(
@@ -786,7 +781,8 @@ def create_github_repo(repo_name: str, files: Dict[str, str]) -> Dict[str, str]:
             name=repo_name,
             description="Automated deployment from task request",
             private=False,
-            auto_init=False
+            auto_init=False,
+            has_pages=True
         )
         logger.info(f"  ✓ Repository created: {repo.html_url}")
         
@@ -863,64 +859,6 @@ def update_github_repo(repo_name: str, files: Dict[str, str]) -> str:
     except GithubException as e:
         logger.error(f"  ❌ GitHub API error: {e.data.get('message', str(e))}")
         raise Exception(f"GitHub API error: {e.data.get('message', str(e))}")
-
-
-def enable_github_pages(repo_name: str):
-    """Enable GitHub Pages for the repository."""
-    
-    try:
-        logger.info(f"  📦 Getting repository: {repo_name}")
-        user = github_client.get_user()
-        repo = user.get_repo(repo_name)
-        
-        # Enable GitHub Pages using the main branch
-        # Note: PyGithub doesn't have direct Pages API support, so we use the REST API
-        url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
-        logger.info(f"  📡 Calling GitHub Pages API: {url}")
-        headers = {
-            "Authorization": f"token {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        data = {
-            "source": {
-                "branch": "main",
-                "path": "/"
-            }
-        }
-        
-        response = httpx.post(url, headers=headers, json=data, timeout=30.0)
-        
-        # Log response details for debugging
-        logger.info(f"  📊 Response status: {response.status_code}")
-        if response.status_code not in [201, 409]:
-            logger.warning(f"  ⚠ Response body: {response.text}")
-        
-        # 201 means created, 409 means already exists (both are OK)
-        if response.status_code not in [201, 409]:
-            logger.warning(f"  ⚠ GitHub Pages enable returned status {response.status_code}")
-            raise Exception(f"GitHub Pages API returned {response.status_code}: {response.text}")
-        elif response.status_code == 201:
-            logger.info("  ✓ GitHub Pages enabled successfully")
-        elif response.status_code == 409:
-            logger.info("  ✓ GitHub Pages already enabled")
-        
-        # Wait longer for Pages to initialize (can take 1-2 minutes)
-        logger.info("  ⏳ Waiting 10 seconds for Pages to initialize...")
-        time.sleep(10)
-        
-        # Verify Pages is enabled
-        verify_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
-        verify_response = httpx.get(verify_url, headers=headers, timeout=30.0)
-        if verify_response.status_code == 200:
-            pages_info = verify_response.json()
-            logger.info(f"  ✓ Pages verification successful - Status: {pages_info.get('status', 'unknown')}")
-            logger.info(f"  🌐 Pages URL: {pages_info.get('html_url', 'N/A')}")
-        else:
-            logger.warning(f"  ⚠ Could not verify Pages status: {verify_response.status_code}")
-    
-    except Exception as e:
-        logger.error(f"  ❌ Could not enable GitHub Pages: {e}")
-        raise  # Re-raise the exception so deployment fails if Pages can't be enabled
 
 
 async def send_evaluation(evaluation_url: str, data: EvaluationResponse):

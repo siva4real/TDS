@@ -363,7 +363,7 @@ def process_attachments(attachments: List[Attachment]) -> List[Dict[str, Any]]:
     return processed
 
 
-async def generate_code_with_ai(
+async def generate_code_with_ai( 
     brief: str,
     checks: List[str],
     attachments: List[Dict[str, Any]],

@@ -786,8 +786,7 @@ def create_github_repo(repo_name: str, files: Dict[str, str]) -> Dict[str, str]:
             name=repo_name,
             description="Automated deployment from task request",
             private=False,
-            auto_init=False,
-            has_pages=True
+            auto_init=False
         )
         logger.info(f"  ✓ Repository created: {repo.html_url}")
         

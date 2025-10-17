@@ -886,21 +886,37 @@ def enable_github_pages(repo_name: str):
         
         response = httpx.post(url, headers=headers, json=data, timeout=30.0)
         
+        # Log response details for debugging
+        logger.info(f"  📊 Response status: {response.status_code}")
+        if response.status_code not in [201, 409]:
+            logger.warning(f"  ⚠ Response body: {response.text}")
+        
         # 201 means created, 409 means already exists (both are OK)
         if response.status_code not in [201, 409]:
             logger.warning(f"  ⚠ GitHub Pages enable returned status {response.status_code}")
+            raise Exception(f"GitHub Pages API returned {response.status_code}: {response.text}")
         elif response.status_code == 201:
             logger.info("  ✓ GitHub Pages enabled successfully")
         elif response.status_code == 409:
             logger.info("  ✓ GitHub Pages already enabled")
         
-        # Wait a moment for Pages to initialize
-        logger.info("  ⏳ Waiting 2 seconds for Pages to initialize...")
-        time.sleep(2)
+        # Wait longer for Pages to initialize (can take 1-2 minutes)
+        logger.info("  ⏳ Waiting 10 seconds for Pages to initialize...")
+        time.sleep(10)
+        
+        # Verify Pages is enabled
+        verify_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
+        verify_response = httpx.get(verify_url, headers=headers, timeout=30.0)
+        if verify_response.status_code == 200:
+            pages_info = verify_response.json()
+            logger.info(f"  ✓ Pages verification successful - Status: {pages_info.get('status', 'unknown')}")
+            logger.info(f"  🌐 Pages URL: {pages_info.get('html_url', 'N/A')}")
+        else:
+            logger.warning(f"  ⚠ Could not verify Pages status: {verify_response.status_code}")
     
     except Exception as e:
-        logger.warning(f"  ⚠ Could not enable GitHub Pages: {e}")
-        # Don't fail the whole process if Pages enabling fails
+        logger.error(f"  ❌ Could not enable GitHub Pages: {e}")
+        raise  # Re-raise the exception so deployment fails if Pages can't be enabled
 
 
 async def send_evaluation(evaluation_url: str, data: EvaluationResponse):

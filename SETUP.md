@@ -23,8 +23,17 @@ This guide will help you get the API up and running in 5 minutes.
 #### OpenAI API Key
 
 1. Go to https://platform.openai.com/api-keys
-2. Create new secret key
-3. Copy the key (starts with `sk-`)
+2. Click **Create new secret key**
+3. Copy the key (it will start with `sk-`)
+4. In your project's `.env` file, add your key:
+
+   ```
+   # In your .env file
+   GITHUB_USERNAME=your_github_username
+   OPENAI_API_KEY=sk-xxxxxxxxxx
+   ```
+
+5. **Save** the `.env` file.
 
 ### 2. Clone and Configure
 

@@ -38,7 +38,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Environment variables (hardcoded for temporary use)
+# Load environment variables from .env file or environment (Render/production)
 SECRET_CODE = os.environ.get("SECRET_CODE")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -420,7 +420,7 @@ content
     try:
         logger.info("  📡 Calling OpenAI API (model: gpt-4o)...")
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5",
             messages=[
                 {
                     "role": "system",

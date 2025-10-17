@@ -275,19 +275,25 @@ async def handle_round_2(request: TaskRequest) -> dict:
     repo_name = repo_info_stored["repo_name"]
     logger.info(f"✓ Found existing repo: {repo_name}")
     
+    # Fetch existing code from the repository
+    logger.info(f"📥 Fetching existing code from repository: {repo_name}")
+    existing_code = fetch_existing_code(repo_name)
+    logger.info(f"✓ Fetched {len(existing_code)} files from repository")
+    
     # Process attachments
     logger.info(f"📎 Processing {len(request.attachments) if request.attachments else 0} attachments...")
     attachments_data = process_attachments(request.attachments)
     logger.info(f"✓ Processed {len(attachments_data)} attachments")
     
-    # Generate updated code using OpenAI
+    # Generate updated code using OpenAI with existing code context
     logger.info("🤖 Generating updated code using OpenAI...")
     generated_files = await generate_code_with_ai(
         brief=request.brief,
         checks=request.checks,
         attachments=attachments_data,
         task_name=request.task,
-        is_update=True
+        is_update=True,
+        existing_code=existing_code
     )
     logger.info(f"✓ Generated {len(generated_files)} updated files: {', '.join(generated_files.keys())}")
     
@@ -326,6 +332,37 @@ async def handle_round_2(request: TaskRequest) -> dict:
     }
     logger.info("🎉 Round 2 completed successfully!")
     return result
+
+
+def fetch_existing_code(repo_name: str) -> Dict[str, str]:
+    """Fetch existing code files from the GitHub repository."""
+    try:
+        logger.info(f"  🔐 Authenticating with GitHub...")
+        user = github_client.get_user()
+        logger.info(f"  📦 Getting repository: {repo_name}")
+        repo = user.get_repo(repo_name)
+        
+        # Get all files in the repository
+        logger.info("  📄 Fetching repository contents...")
+        contents = repo.get_contents("")
+        
+        existing_files = {}
+        for content in contents:
+            if content.type == "file":
+                filename = content.name
+                logger.info(f"    Fetching {filename}...")
+                file_content = repo.get_contents(filename)
+                # Decode base64 content
+                decoded_content = base64.b64decode(file_content.content).decode('utf-8')
+                existing_files[filename] = decoded_content
+                logger.info(f"    ✓ Fetched {filename} ({len(decoded_content)} bytes)")
+        
+        return existing_files
+    
+    except Exception as e:
+        logger.error(f"  ❌ Error fetching existing code: {e}")
+        logger.exception("  Full error traceback:")
+        return {}
 
 
 def sanitize_repo_name(task: str) -> str:
@@ -372,7 +409,8 @@ async def generate_code_with_ai(
     checks: List[str],
     attachments: List[Dict[str, Any]],
     task_name: str,
-    is_update: bool = False
+    is_update: bool = False,
+    existing_code: Optional[Dict[str, str]] = None
 ) -> Dict[str, str]:
     """Generate code files using OpenAI API."""
     logger.info(f"  Building AI prompt for {'update' if is_update else 'creation'}...")
@@ -387,10 +425,49 @@ async def generate_code_with_ai(
     # Prepare checks
     checks_text = "\n".join([f"- {check}" for check in checks])
     
-    # Create prompt for OpenAI
-    action = "update" if is_update else "create"
+    # Prepare existing code context for updates
+    existing_code_context = ""
+    if is_update and existing_code:
+        existing_code_context = "\n\n=== EXISTING CODE (DO NOT REWRITE FROM SCRATCH) ===\n\n"
+        for filename, content in existing_code.items():
+            # Skip LICENSE file in the context to save tokens
+            if filename == "LICENSE":
+                continue
+            existing_code_context += f"===EXISTING FILE: {filename}===\n{content}\n===END EXISTING FILE===\n\n"
+        logger.info(f"  📋 Including {len(existing_code)} existing files in context")
     
-    prompt = f"""You are a professional web developer. {action.capitalize()} a web application based on the following requirements:
+    # Create prompt for OpenAI - different for updates vs new creation
+    if is_update and existing_code:
+        prompt = f"""You are an experienced web developer. This is ROUND 2 - an UPDATE request.
+
+{existing_code_context}
+
+NEW REQUIREMENTS (Review/Update Request):
+Brief: {brief}
+
+Requirements/Checks to implement:
+{checks_text}
+
+{attachment_info}
+
+CRITICAL INSTRUCTIONS FOR UPDATES:
+1. You are UPDATING existing code above, NOT creating from scratch
+2. READ the existing code carefully - this is what's currently deployed
+3. Make ONLY the necessary changes to satisfy the new requirements
+4. PRESERVE all existing functionality that's working
+5. Make targeted, minimal modifications
+6. Keep the same structure and style
+7. Update README.md to document changes
+
+Output each file with clear markers:
+===FILE: filename===
+[complete updated file content]
+===END FILE===
+
+You must output: index.html, README.md, and LICENSE."""
+    else:
+        action = "create"
+        prompt = f"""You are an experienced web developer. Your job is to create/update exactly what is specified — nothing more, nothing less. Focus on functionality first and every feature mentioned works correctly. functionality over useless UI polish. {action.capitalize()} a web application based on the following requirements:
 
 Brief: {brief}
 
@@ -424,7 +501,7 @@ content
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert web developer who creates minimal, functional, production-ready web applications."
+                    "content": "You are an experienced web developer. Your job is to implement exactly what is specified — nothing more, nothing less. Focus on functionality first and every feature mentioned works correctly. functionality over useless UI elements or visual polish."
                 },
                 {
                     "role": "user",

@@ -36,7 +36,7 @@ app = FastAPI(
 
 # Environment variables (hardcoded for temporary use)
 SECRET_CODE = "myappsecret123123"
-GITHUB_TOKEN = "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"
+GITHUB_TOKEN = "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"
 OPENAI_API_KEY = "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"
 GITHUB_USERNAME = "siva4real"
 

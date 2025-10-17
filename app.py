@@ -386,7 +386,7 @@ async def generate_code_with_ai(
     # Create prompt for OpenAI
     action = "update" if is_update else "create"
     
-    prompt = f"""You are a professional web developer. You will create a verbose README.md file and create a minimal robust website that passes automated testing {action.capitalize()} a web application based on the following requirements:
+    prompt = f"""You are a professional web developer. {action.capitalize()} a web application based on the following requirements:
 
 Brief: {brief}
 
@@ -400,11 +400,11 @@ Generate the following files:
 2. README.md - A professional, verbose README with sections: Summary, Setup, Usage, Code Explanation, License
 
 Guidelines:
-- Make it minimal but fully functional
+- Make it minimal but fully functional. should pass automated tests.
 - Use modern, clean UI design
 - Include all necessary code in index.html (no external dependencies if possible)
 - Handle the query parameter ?url=... as specified
-- Make the README professional and detailed
+- Make the README professional and detailed  (summary, setup, usage, code explanation, license)
 - Ensure the code works immediately when deployed to GitHub Pages
 
 Output each file with clear markers:

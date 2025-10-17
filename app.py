@@ -386,7 +386,7 @@ async def generate_code_with_ai(
     # Create prompt for OpenAI
     action = "update" if is_update else "create"
     
-    prompt = f"""You are a professional web developer. {action.capitalize()} a minimal, functional web application based on the following requirements:
+    prompt = f"""You are a professional web developer. You will create a verbose README.md file and create a minimal robust website that passes automated testing {action.capitalize()} a web application based on the following requirements:
 
 Brief: {brief}
 

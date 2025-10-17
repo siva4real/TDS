@@ -420,7 +420,7 @@ content
     try:
         logger.info("  📡 Calling OpenAI API (model: gpt-4o)...")
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5",
             messages=[
                 {
                     "role": "system",

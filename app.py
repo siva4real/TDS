@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import httpx
@@ -101,9 +101,10 @@ async def root():
 
 
 @app.post("/deploy")
-async def deploy_task(request: TaskRequest):
+async def deploy_task(request: TaskRequest, background_tasks: BackgroundTasks):
     """
     Main endpoint that handles task deployment requests.
+    Returns HTTP 200 immediately and processes the task in the background.
     
     Round 1: Creates a new repo and deploys initial code
     Round 2: Updates existing repo with modifications
@@ -140,37 +141,63 @@ async def deploy_task(request: TaskRequest):
         )
     logger.info("✓ Server configuration verified")
     
+    # Validate round number
+    if request.round not in [1, 2]:
+        logger.error(f"❌ Invalid round number: {request.round}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid round number"
+        )
+    
+    # Add background task to process the deployment
+    logger.info("📋 Adding task to background processing queue...")
+    background_tasks.add_task(process_deployment_task, request)
+    
+    # Return HTTP 200 immediately
+    logger.info("✅ REQUEST ACCEPTED - Processing in background")
+    logger.info("=" * 80)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "status": "success",
+            "message": "Task received and processing in background",
+            "nonce": request.nonce,
+            "round": request.round,
+            "note": "Results will be sent to evaluation_url when processing completes"
+        }
+    )
+
+
+async def process_deployment_task(request: TaskRequest):
+    """
+    Background task that processes the deployment and sends results to evaluation_url.
+    This runs asynchronously after the HTTP 200 response has been sent to the client.
+    """
     try:
+        logger.info("🔄 BACKGROUND PROCESSING STARTED")
+        logger.info("=" * 80)
+        
         if request.round == 1:
-            logger.info("🎯 Processing ROUND 1 request...")
+            logger.info("🎯 Processing ROUND 1 request in background...")
             result = await handle_round_1(request)
         elif request.round == 2:
-            logger.info("🎯 Processing ROUND 2 request...")
+            logger.info("🎯 Processing ROUND 2 request in background...")
             result = await handle_round_2(request)
         else:
-            logger.error(f"❌ Invalid round number: {request.round}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid round number"
-            )
+            logger.error(f"❌ Invalid round number in background task: {request.round}")
+            return
         
         logger.info("=" * 80)
-        logger.info("✅ REQUEST COMPLETED SUCCESSFULLY")
+        logger.info("✅ BACKGROUND PROCESSING COMPLETED SUCCESSFULLY")
         logger.info("=" * 80)
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=result
-        )
     
     except Exception as e:
         logger.error("=" * 80)
-        logger.error(f"❌ ERROR PROCESSING REQUEST: {str(e)}")
+        logger.error(f"❌ ERROR IN BACKGROUND PROCESSING: {str(e)}")
         logger.error("=" * 80)
         logger.exception("Full error traceback:")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing request: {str(e)}"
-        )
+        # Don't raise - we've already sent 200 to client
+        # The error will be logged but won't affect the client response
 
 
 async def handle_round_1(request: TaskRequest) -> dict:
